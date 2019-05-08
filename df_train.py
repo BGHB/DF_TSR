@@ -32,7 +32,7 @@ def parse_args():
                         help='Training dataset.')
     parser.add_argument('--dataset-root', type=str, default="F:/DF",
                         help='dataset root path')
-    parser.add_argument('--num-workers', '-j', dest='num_workers', type=int, default=0,
+    parser.add_argument('--num-workers', '-j', dest='num_workers', type=int, default=1,
                         help='Number of data workers, \
                         you can use larger number to accelerate data loading, if you CPU and GPUs are powerful.')
     parser.add_argument('--gpus', type=str, default='0',
@@ -80,12 +80,6 @@ def transform(img, label):
 
 def transform_resize(img, label):
     newimg = cv2.resize(img.asnumpy, (512, 512))
-    # if np.random.uniform(0, 1) > 0.5:
-    #     img = cv2.split(img.asnumpy())
-    #     for i, c in enumerate(img):
-    #         img[i] = cv2.equalizeHist(c)
-    #     img = cv2.merge(img)
-    #     img = mx.nd.array(img)
     return newimg, label
 
 
@@ -111,10 +105,13 @@ def get_dataloader(net, train_dataset, val_dataset, data_shape, batch_size, num_
     # use fake data to generate fixed anchors for target generation
     with autograd.train_mode():
         _, _, anchors = net(mx.nd.zeros((1, 3, height, width)))
-    batchify_fn = Tuple(Stack(), Stack(), Stack())  # stack image, cls_targets, box_targets
-    train_loader = gluon.data.DataLoader(
-        train_dataset.transform(SSDDefaultTrainTransform(width, height, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))),
-        batch_size, True, batchify_fn=batchify_fn, last_batch='rollover', num_workers=num_workers)
+    # batchify_fn = Tuple(Stack(), Stack(), Stack())  # stack image, cls_targets, box_targets
+    # trans_train = train_dataset.transform(SSDDefaultTrainTransform(width, height, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)))
+    # train_loader = gluon.data.DataLoader(
+    #     train_dataset.transform(SSDDefaultTrainTransform(width, height, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))),
+    #     batch_size, False, batchify_fn=batchify_fn, last_batch='rollover', num_workers=num_workers)
+
+    train_loader = gluon.data.DataLoader(train_dataset, batch_size, last_batch='rollover', num_workers=num_workers)
 
     val_batchify_fn = Tuple(Stack(), Pad(pad_val=-1))
     val_loader = gluon.data.DataLoader(
@@ -271,7 +268,7 @@ if __name__ == '__main__':
     net_name = '_'.join(('ssd', str(args.data_shape), args.network, args.dataset))
     args.save_prefix += net_name
 
-    net = get_model('ssd_512_resnet50_v1_custom', classes=train_dataset.classes, pretrained=True)
+    net = get_model('ssd_512_resnet50_v1_custom', classes=train_dataset.classes)
     if args.resume.strip():
         net.load_parameters(args.resume.strip())
 
