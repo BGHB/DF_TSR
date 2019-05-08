@@ -113,7 +113,7 @@ def get_dataloader(net, train_dataset, val_dataset, data_shape, batch_size, num_
         _, _, anchors = net(mx.nd.zeros((1, 3, height, width)))
     batchify_fn = Tuple(Stack(), Stack(), Stack())  # stack image, cls_targets, box_targets
     train_loader = gluon.data.DataLoader(
-        val_dataset.transform(SSDDefaultValTransform(width, height, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))),
+        train_dataset.transform(SSDDefaultTrainTransform(width, height, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))),
         batch_size, True, batchify_fn=batchify_fn, last_batch='rollover', num_workers=num_workers)
 
     val_batchify_fn = Tuple(Stack(), Pad(pad_val=-1))
