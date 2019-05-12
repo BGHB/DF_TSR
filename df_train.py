@@ -26,18 +26,18 @@ def parse_args():
                         help="Base network name which serves as feature extraction base.")
     parser.add_argument('--data-shape', type=int, default=512,
                         help="Input data shape, use 300, 512.")
-    parser.add_argument('--batch-size', type=int, default=32,
+    parser.add_argument('--batch-size', type=int, default=2,
                         help='Training mini-batch size')
     parser.add_argument('--dataset', type=str, default='DF',
                         help='Training dataset.')
-    parser.add_argument('--dataset-root', type=str, default="F:/DF",
+    parser.add_argument('--dataset-root', type=str, default="E:\DataFountain\TSR",
                         help='dataset root path')
-    parser.add_argument('--num-workers', '-j', dest='num_workers', type=int, default=1,
+    parser.add_argument('--num-workers', '-j', dest='num_workers', type=int, default=4,
                         help='Number of data workers, \
                         you can use larger number to accelerate data loading, if you CPU and GPUs are powerful.')
     parser.add_argument('--gpus', type=str, default='0',
                         help='Training with GPUs, you can specify 1,3 for example.')
-    parser.add_argument('--epochs', type=int, default=240,
+    parser.add_argument('--epochs', type=int, default=40,
                         help='Training epochs.')
     parser.add_argument('--resume', type=str, default='',
                         help='Resume from previously saved parameters if not None. '
@@ -49,7 +49,7 @@ def parse_args():
                         help='Learning rate, default is 0.001')
     parser.add_argument('--lr-decay', type=float, default=0.1,
                         help='decay rate of learning rate. default is 0.1.')
-    parser.add_argument('--lr-decay-epoch', type=str, default='160,200',
+    parser.add_argument('--lr-decay-epoch', type=str, default='10,20',
                         help='epoches at which learning rate decays. default is 160,200.')
     parser.add_argument('--momentum', type=float, default=0.9,
                         help='SGD momentum, default is 0.9')
@@ -64,7 +64,7 @@ def parse_args():
     parser.add_argument('--val-interval', type=int, default=200,
                         help='Epoch interval for validation, increase the number will reduce the '
                              'training time if validation is slow.')
-    parser.add_argument('--seed', type=int, default=23,
+    parser.add_argument('--seed', type=int, default=233,
                         help='Random seed to be fixed.')
     args = parser.parse_args()
     return args
@@ -78,45 +78,59 @@ def transform(img, label):
         img = mx.nd.array(img)
     return img, label
 
-def transform_resize(img, label):
-    newimg = cv2.resize(img.asnumpy, (512, 512))
-    return newimg, label
+# def get_dataset(dataset, args):
+#     if dataset.lower() == 'df':
+#         train_path = args.dataset_root + 'Train'
+#         val_path = args.dataset_root + 'Train'
+#         if train_path == val_path:
+#             print('warning: train path == val path')
+#             train_dataset, val_dataset, _ = DF_Detection(args.dataset_root).split(5, 1, 0)
+#         else:
+#             train_dataset = DF_Detection(train_path)
+#             val_dataset = DF_Detection(val_path)
+#         val_metric = VOC07MApMetric(iou_thresh=0.5, class_names=train_dataset.classes)
+#     else:
+#         raise NotImplementedError('Dataset: {} not implemented.'.format(dataset))
+#     return train_dataset, val_dataset, val_metric
 
-
-def get_dataset(dataset, args):
-    if dataset.lower() == 'df':
-        train_path = args.dataset_root + 'Train'
-        val_path = args.dataset_root + 'Train'
-        if train_path == val_path:
-            print('warning: train path == val path')
-            train_dataset, val_dataset, _ = DF_Detection(args.dataset_root).split(5, 1, 0)
-        else:
-            train_dataset = DF_Detection(train_path)
-            val_dataset = DF_Detection(val_path)
-        val_metric = VOC07MApMetric(iou_thresh=0.5, class_names=train_dataset.classes)
-    else:
-        raise NotImplementedError('Dataset: {} not implemented.'.format(dataset))
+def get_dataset(root):
+    train_dataset = DF_Detection(root, label_name='train_label.csv')
+    val_dataset = DF_Detection(root, label_name='val_label.csv')
+    val_metric = VOC07MApMetric(iou_thresh=0.5, class_names=train_dataset.classes)
     return train_dataset, val_dataset, val_metric
 
 
-def get_dataloader(net, train_dataset, val_dataset, data_shape, batch_size, num_workers):
+# def get_dataloader(net, train_dataset, val_dataset, data_shape, batch_size, num_workers):
+#     """Get dataloader."""
+#     width, height = data_shape, data_shape
+#     # use fake data to generate fixed anchors for target generation
+#     with autograd.train_mode():
+#         _, _, anchors = net(mx.nd.zeros((1, 3, height, width)))
+#     # batchify_fn = Tuple(Stack(), Stack(), Stack())  # stack image, cls_targets, box_targets
+#     # trans_train = train_dataset.transform(SSDDefaultTrainTransform(width, height, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)))
+#     # train_loader = gluon.data.DataLoader(
+#     #     train_dataset.transform(SSDDefaultTrainTransform(width, height, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))),
+#     #     batch_size, False, batchify_fn=batchify_fn, last_batch='rollover', num_workers=num_workers)
+#
+#     train_loader = gluon.data.DataLoader(train_dataset, batch_size, last_batch='rollover', num_workers=num_workers)
+#
+#     val_batchify_fn = Tuple(Stack(), Pad(pad_val=-1))
+#     val_loader = gluon.data.DataLoader(
+#         val_dataset.transform(SSDDefaultValTransform(width, height, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))),
+#         batch_size, False, batchify_fn=val_batchify_fn, last_batch='discard', num_workers=num_workers)
+#     return train_loader, val_loader
+
+
+def get_dataloader(train_dataset, val_dataset, data_shape, batch_size, num_workers):
     """Get dataloader."""
     width, height = data_shape, data_shape
-    # use fake data to generate fixed anchors for target generation
-    with autograd.train_mode():
-        _, _, anchors = net(mx.nd.zeros((1, 3, height, width)))
-    # batchify_fn = Tuple(Stack(), Stack(), Stack())  # stack image, cls_targets, box_targets
-    # trans_train = train_dataset.transform(SSDDefaultTrainTransform(width, height, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)))
-    # train_loader = gluon.data.DataLoader(
-    #     train_dataset.transform(SSDDefaultTrainTransform(width, height, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))),
-    #     batch_size, False, batchify_fn=batchify_fn, last_batch='rollover', num_workers=num_workers)
-
-    train_loader = gluon.data.DataLoader(train_dataset, batch_size, last_batch='rollover', num_workers=num_workers)
-
-    val_batchify_fn = Tuple(Stack(), Pad(pad_val=-1))
-    val_loader = gluon.data.DataLoader(
-        val_dataset.transform(SSDDefaultValTransform(width, height, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))),
-        batch_size, False, batchify_fn=val_batchify_fn, last_batch='discard', num_workers=num_workers)
+    batchify_fn = Tuple(Stack(), Pad(pad_val=-1))
+    train_loader = gluon.data.DataLoader(train_dataset.transform(SSDDefaultTrainTransform(width, height)),
+                                         batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='rollover',
+                                         num_workers=num_workers)
+    val_loader = gluon.data.DataLoader(val_dataset.transform(SSDDefaultValTransform(width, height)),
+                                       batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='keep',
+                                       num_workers=num_workers)
     return train_loader, val_loader
 
 
@@ -164,7 +178,6 @@ def validate(net, val_data, ctx, eval_metric):
 
 
 def train(net, train_data, val_data, eval_metric, ctx, args):
-
     """Training pipeline"""
     net.collect_params().reset_ctx(ctx)
     trainer = gluon.Trainer(
@@ -261,7 +274,7 @@ if __name__ == '__main__':
     ctx = [mx.gpu(int(i)) for i in args.gpus.split(',') if i.strip()]
     ctx = ctx if ctx else [mx.cpu()]
     # training data
-    train_dataset, val_dataset, eval_metric = get_dataset(args.dataset, args)
+    train_dataset, val_dataset, eval_metric = get_dataset(args.dataset_root)
     print(len(train_dataset))
     print(len(val_dataset))
     # network
@@ -273,14 +286,23 @@ if __name__ == '__main__':
         net.load_parameters(args.resume.strip())
 
     for param in net.collect_params().values():
-        if param._data is not None:
-            continue
-        print(param)
+        # if param._data is not None:
+        #     continue
+        # print(param)
         param.initialize()
 
-    train_data, val_data = get_dataloader(
-        net, train_dataset, val_dataset, args.data_shape, args.batch_size, args.num_workers)
+    # train_data, val_data = get_dataloader(train_dataset, val_dataset, args.data_shape, args.batch_size, args.num_workers)
+    with autograd.train_mode():
+        _, _, anchors = net(mx.nd.zeros((1, 3, 512, 512)))
+    batchify_fn_train = Tuple(Stack(), Stack(), Stack())
 
+    train_data = gluon.data.DataLoader(train_dataset.transform(SSDDefaultTrainTransform(args.data_shape, args.data_shape)),
+                                         args.batch_size, shuffle=False, batchify_fn=batchify_fn_train, last_batch='rollover',
+                                         num_workers=args.num_workers)
+    batchify_fn = Tuple(Stack(), Pad(pad_val=-1))
+    val_data = gluon.data.DataLoader(val_dataset.transform(SSDDefaultValTransform(args.data_shape, args.data_shape)),
+                                       args.batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='keep',
+                                       num_workers=args.num_workers)
     # training
     train(net, train_data, val_data, eval_metric, ctx, args)
 
