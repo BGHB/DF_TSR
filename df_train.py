@@ -15,6 +15,7 @@ from gluoncv import utils as gutils
 from gluoncv.model_zoo import get_model
 from gluoncv.data.batchify import Tuple, Stack, Pad
 from gluoncv.data.transforms.presets.ssd import SSDDefaultTrainTransform
+from new import SSDDefaultTrainTransform as newSSDDefaultTrainTransform
 from gluoncv.data.transforms.presets.ssd import SSDDefaultValTransform
 from gluoncv.utils.metrics.voc_detection import VOC07MApMetric, VOCMApMetric
 from gluoncv.utils.metrics.accuracy import Accuracy
@@ -26,13 +27,13 @@ def parse_args():
                         help="Base network name which serves as feature extraction base.")
     parser.add_argument('--data-shape', type=int, default=512,
                         help="Input data shape, use 300, 512.")
-    parser.add_argument('--batch-size', type=int, default=2,
+    parser.add_argument('--batch-size', type=int, default=4,
                         help='Training mini-batch size')
     parser.add_argument('--dataset', type=str, default='DF',
                         help='Training dataset.')
-    parser.add_argument('--dataset-root', type=str, default="E:\DataFountain\TSR",
+    parser.add_argument('--dataset-root', type=str, default="/media/handewei/新材料/DF",
                         help='dataset root path')
-    parser.add_argument('--num-workers', '-j', dest='num_workers', type=int, default=4,
+    parser.add_argument('--num-workers', '-j', dest='num_workers', type=int, default=2,
                         help='Number of data workers, \
                         you can use larger number to accelerate data loading, if you CPU and GPUs are powerful.')
     parser.add_argument('--gpus', type=str, default='0',
@@ -78,21 +79,6 @@ def transform(img, label):
         img = mx.nd.array(img)
     return img, label
 
-# def get_dataset(dataset, args):
-#     if dataset.lower() == 'df':
-#         train_path = args.dataset_root + 'Train'
-#         val_path = args.dataset_root + 'Train'
-#         if train_path == val_path:
-#             print('warning: train path == val path')
-#             train_dataset, val_dataset, _ = DF_Detection(args.dataset_root).split(5, 1, 0)
-#         else:
-#             train_dataset = DF_Detection(train_path)
-#             val_dataset = DF_Detection(val_path)
-#         val_metric = VOC07MApMetric(iou_thresh=0.5, class_names=train_dataset.classes)
-#     else:
-#         raise NotImplementedError('Dataset: {} not implemented.'.format(dataset))
-#     return train_dataset, val_dataset, val_metric
-
 def get_dataset(root):
     train_dataset = DF_Detection(root, label_name='train_label.csv')
     val_dataset = DF_Detection(root, label_name='val_label.csv')
@@ -121,17 +107,23 @@ def get_dataset(root):
 #     return train_loader, val_loader
 
 
-def get_dataloader(train_dataset, val_dataset, data_shape, batch_size, num_workers):
+def get_dataloader(net, train_dataset, val_dataset, data_shape, batch_size, num_workers):
     """Get dataloader."""
     width, height = data_shape, data_shape
-    batchify_fn = Tuple(Stack(), Pad(pad_val=-1))
-    train_loader = gluon.data.DataLoader(train_dataset.transform(SSDDefaultTrainTransform(width, height)),
-                                         batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='rollover',
+
+    with autograd.train_mode():
+        _, _, anchors = net(mx.nd.zeros((1, 3, 512, 512)))
+    batchify_fn_train = Tuple(Stack(), Stack(), Stack())
+    train_loader = gluon.data.DataLoader(train_dataset.transform(newSSDDefaultTrainTransform(width, height, anchors)),
+                                         batch_size, shuffle=False, batchify_fn=batchify_fn_train, last_batch='rollover',
                                          num_workers=num_workers)
+
+    batchify_fn = Tuple(Stack(), Pad(pad_val=-1))
     val_loader = gluon.data.DataLoader(val_dataset.transform(SSDDefaultValTransform(width, height)),
                                        batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='keep',
                                        num_workers=num_workers)
     return train_loader, val_loader
+
 
 
 def save_params(net, best_map, current_map, epoch, save_interval, prefix):
@@ -170,7 +162,6 @@ def validate(net, val_data, ctx, eval_metric):
             # split ground truths
             gt_ids.append(y.slice_axis(axis=-1, begin=4, end=5))
             gt_bboxes.append(y.slice_axis(axis=-1, begin=0, end=4))
-            gt_difficults.append(y.slice_axis(axis=-1, begin=5, end=6) if y.shape[-1] > 5 else None)
 
         # update metric
         eval_metric.update(det_bboxes, det_ids, det_scores, gt_bboxes, gt_ids, gt_difficults)
@@ -289,20 +280,10 @@ if __name__ == '__main__':
         # if param._data is not None:
         #     continue
         # print(param)
-        param.initialize()
+        param.initialize(force_reinit=True)
 
-    # train_data, val_data = get_dataloader(train_dataset, val_dataset, args.data_shape, args.batch_size, args.num_workers)
-    with autograd.train_mode():
-        _, _, anchors = net(mx.nd.zeros((1, 3, 512, 512)))
-    batchify_fn_train = Tuple(Stack(), Stack(), Stack())
+    train_data, val_data = get_dataloader(net, train_dataset, val_dataset, args.data_shape, args.batch_size, args.num_workers)
 
-    train_data = gluon.data.DataLoader(train_dataset.transform(SSDDefaultTrainTransform(args.data_shape, args.data_shape)),
-                                         args.batch_size, shuffle=False, batchify_fn=batchify_fn_train, last_batch='rollover',
-                                         num_workers=args.num_workers)
-    batchify_fn = Tuple(Stack(), Pad(pad_val=-1))
-    val_data = gluon.data.DataLoader(val_dataset.transform(SSDDefaultValTransform(args.data_shape, args.data_shape)),
-                                       args.batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='keep',
-                                       num_workers=args.num_workers)
     # training
     train(net, train_data, val_data, eval_metric, ctx, args)
 

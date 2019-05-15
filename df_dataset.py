@@ -38,7 +38,6 @@ class DF_Detection(VisionDataset):
                  int(self._items[idx][6]),  # ymax
                  int(self._items[idx][9])   # id
         ]]
-
         img_path = os.path.join(self._image_root, img_name)
         img = mx.image.imread(img_path, 1)
         if self._transform is not None:
@@ -73,7 +72,7 @@ class DF_Detection(VisionDataset):
 
 
 if __name__ == "__main__":
-    root = "E:\DataFountain\TSR"
+    root = "/media/handewei/新材料/DF"
 
     train_dataset = DF_Detection(root, label_name='train_label.csv')
     val_dataset = DF_Detection(root, label_name='val_label.csv')
@@ -82,12 +81,12 @@ if __name__ == "__main__":
     # print(len(train_data), len(val_data))
 
     for train_image, train_label in train_dataset:
-        bbox = train_label[:4]
-        cid = train_label[4:5]
+        bbox = train_label[:, :4]
+        cid = train_label[:, 4:5]
         cvimg = train_image.asnumpy()
 
-        cvimg = cv2.rectangle(cvimg, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 8)
-        cvimg = cv2.putText(cvimg, str(cid[0]), (bbox[2], bbox[3]), cv2.FONT_HERSHEY_COMPLEX, 4, (255, 0, 0), 8)
+        cvimg = cv2.rectangle(cvimg, (bbox[0][0], bbox[0][1]), (bbox[0][2], bbox[0][3]), (0, 255, 0), 8)
+        cvimg = cv2.putText(cvimg, str(cid[0][0]), (bbox[0][2], bbox[0][3]), cv2.FONT_HERSHEY_COMPLEX, 4, (255, 0, 0), 8)
         # ROI = cvimg[bbox[1]:bbox[3], bbox[0]: bbox[2], :]
         cvimg = cv2.resize(cvimg, (cvimg.shape[1]//4, cvimg.shape[0]//4))
 
