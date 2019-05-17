@@ -62,7 +62,7 @@ def parse_args():
                         help='Saving parameter prefix')
     parser.add_argument('--save-interval', type=int, default=200,
                         help='Saving parameters epoch interval, best model will always be saved.')
-    parser.add_argument('--val-interval', type=int, default=200,
+    parser.add_argument('--val-interval', type=int, default=40,
                         help='Epoch interval for validation, increase the number will reduce the '
                              'training time if validation is slow.')
     parser.add_argument('--seed', type=int, default=233,
@@ -118,7 +118,7 @@ def get_dataloader(net, train_dataset, val_dataset, data_shape, batch_size, num_
                                          batch_size, shuffle=False, batchify_fn=batchify_fn_train, last_batch='rollover',
                                          num_workers=num_workers)
 
-    batchify_fn = Tuple(Stack(), Pad(pad_val=-1))
+    batchify_fn = Tuple(Stack(), Stack())
     val_loader = gluon.data.DataLoader(val_dataset.transform(SSDDefaultValTransform(width, height)),
                                        batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='keep',
                                        num_workers=num_workers)
@@ -155,6 +155,11 @@ def validate(net, val_data, ctx, eval_metric):
         for x, y in zip(data, label):
             # get prediction results
             ids, scores, bboxes = net(x)
+            temp_img = x[0].transpose(1, 2, 0).asnumpy()
+            temp_label = y[0]
+            temp_img = cv2.rectangle(temp_img, (temp_label[0][0], temp_label[0][1]), (temp_label[0][2], temp_label[0][3]), (0, 255, 0), 1)
+            cv2.imshow("temp_img", temp_img)
+            cv2.waitKey(0)
             det_ids.append(ids)
             det_scores.append(scores)
             # clip to image size
@@ -164,7 +169,7 @@ def validate(net, val_data, ctx, eval_metric):
             gt_bboxes.append(y.slice_axis(axis=-1, begin=0, end=4))
 
         # update metric
-        eval_metric.update(det_bboxes, det_ids, det_scores, gt_bboxes, gt_ids, gt_difficults)
+        eval_metric.update(det_bboxes, det_ids, det_scores, gt_bboxes, gt_ids)
     return eval_metric.get()
 
 

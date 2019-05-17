@@ -7,7 +7,7 @@ from mxnet import gluon
 from mxnet import autograd
 from mxnet import nd
 from df_dataset import DF_Detection
-# from gluoncv.data.transforms.presets.ssd import SSDDefaultTrainTransform
+from gluoncv.data.transforms.presets.ssd import SSDDefaultTrainTransform
 from gluoncv.data.transforms.presets.ssd import SSDDefaultValTransform
 from gluoncv.data.batchify import Tuple, Stack, Pad
 from mxnet.gluon.data import DataLoader
@@ -20,7 +20,7 @@ utils.random.seed(233)
 width, height = 512, 512  # suppose we use 512 as base training size
 batch_size = 2
 num_workers = 4
-root = "/media/handewei/新材料/DF"
+
 
 
 def get_dataloader(net, train_dataset, val_dataset, width, height, num_workers):
@@ -39,6 +39,7 @@ def get_dataloader(net, train_dataset, val_dataset, width, height, num_workers):
 
 mbox_loss = SSDMultiBoxLoss()
 # if __name__ == '__main__':
+#     root = "/media/handewei/新材料/DF"
 #     ctx = [mx.gpu(int(i)) for i in gpus.split(',') if i.strip()]
 #     ctx = ctx if ctx else [mx.cpu()]
 #
@@ -62,6 +63,7 @@ mbox_loss = SSDMultiBoxLoss()
 #         print('data:', batch[0].shape)
 #         print('class targets:', batch[1].shape)
 #         print('box targets:', batch[2].shape)
+#         print("complete")
 #         with autograd.record():
 #             cls_pred, box_pred, anchors = net(batch[0])
 #             sum_loss, cls_loss, box_loss = mbox_loss(
@@ -69,7 +71,8 @@ mbox_loss = SSDMultiBoxLoss()
 #             # some standard gluon training steps:
 #             # autograd.backward(sum_loss)
 #             # trainer.step(1)
-
+#
+#
 class SSDDefaultTrainTransform(object):
     """Default SSD training transform which includes tons of image augmentations.
 
@@ -147,8 +150,8 @@ class SSDDefaultTrainTransform(object):
         return img, cls_targets[0], box_targets[0]
 
 
-
 if __name__ == '__main__':
+    root = "/media/handewei/新材料/DF"
     ctx = [mx.gpu(int(i)) for i in gpus.split(',') if i.strip()]
     ctx = ctx if ctx else [mx.cpu()]
 
@@ -178,18 +181,20 @@ if __name__ == '__main__':
     train_image2 = train_image2.transpose((1, 2, 0)) * nd.array((0.229, 0.224, 0.225)) + nd.array((0.485, 0.456, 0.406))
     # train_image2 = (train_image2 * 255).clip(0, 255)
     cvimg = train_image2.asnumpy()
-    cvimg = cv2.rectangle(cvimg, (train_label2[0][0], train_label2[0][1]), (train_label2[0][2], train_label2[0][3]), (0, 255, 0), 1)
-    cvimg = cv2.putText(cvimg, str(cids[0][0]), (train_label2[0][2], train_label2[0][3]), cv2.FONT_HERSHEY_COMPLEX, 4, (255, 0, 0), 8)
+
+
+    # cvimg = cv2.rectangle(cvimg, (train_label2[0][0], train_label2[0][1]), (train_label2[0][2], train_label2[0][3]), (0, 255, 0), 1)
+    cvimg = cv2.putText(cvimg, 's', (train_label2[0][2].asscalar(), train_label2[0][3].asscalar()), cv2.FONT_HERSHEY_COMPLEX, 4, (255, 0, 0), 4)
     cv2.imshow("dsfa", cvimg)
     cv2.waitKey(0)
 
 
 
 
-    batchify_fn_t = Tuple(Stack(), Stack(), Stack())
+    batchify_fn = Tuple(Stack(), Stack(), Stack())
     train_loader = DataLoader(train_dataset.transform(SSDDefaultTrainTransform(width, height, anchors)),
-                              batch_size, shuffle=False, batchify_fn=batchify_fn_t, last_batch='rollover', num_workers=num_workers)
-    batchify_fn = Tuple(Stack(), Pad(pad_val=-1))
+                              batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='rollover', num_workers=num_workers)
+
     val_loader = DataLoader(val_dataset.transform(SSDDefaultValTransform(width, height)),
                             batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='keep', num_workers=num_workers)
 
@@ -213,9 +218,6 @@ if __name__ == '__main__':
     #         # some standard gluon training steps:
     #         # autograd.backward(sum_loss)
     #         # trainer.step(1)
-
-
-
 
 
 

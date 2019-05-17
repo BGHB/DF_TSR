@@ -18,6 +18,7 @@ class DF_Detection(VisionDataset):
         self._transform = transform
         self.index_map = dict(zip(self.classes, range(self.num_class)))
         self._items = item or self._load_items()
+        self.labels = []
 
     def __str__(self):
         return self.__class__.__name__
@@ -32,6 +33,7 @@ class DF_Detection(VisionDataset):
 
     def __getitem__(self, idx):
         img_name = self._items[idx][0]
+
         label = [[int(self._items[idx][1]),  # xmin
                  int(self._items[idx][2]),  # ymin
                  int(self._items[idx][5]),  # xmax
