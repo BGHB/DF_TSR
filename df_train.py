@@ -27,11 +27,11 @@ def parse_args():
                         help="Base network name which serves as feature extraction base.")
     parser.add_argument('--data-shape', type=int, default=512,
                         help="Input data shape, use 300, 512.")
-    parser.add_argument('--batch-size', type=int, default=4,
+    parser.add_argument('--batch-size', type=int, default=2,
                         help='Training mini-batch size')
     parser.add_argument('--dataset', type=str, default='DF',
                         help='Training dataset.')
-    parser.add_argument('--dataset-root', type=str, default="/media/handewei/新材料/DF",
+    parser.add_argument('--dataset-root', type=str, default="E:\DataFountain\TSR",
                         help='dataset root path')
     parser.add_argument('--num-workers', '-j', dest='num_workers', type=int, default=2,
                         help='Number of data workers, \

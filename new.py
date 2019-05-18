@@ -1,4 +1,3 @@
-##########################################################
 import cv2
 from gluoncv import utils
 import mxnet as mx
@@ -73,7 +72,7 @@ mbox_loss = SSDMultiBoxLoss()
 #             # trainer.step(1)
 #
 #
-class SSDDefaultTrainTransform(object):
+class newTransform(object):
     """Default SSD training transform which includes tons of image augmentations.
 
     Parameters
@@ -151,7 +150,7 @@ class SSDDefaultTrainTransform(object):
 
 
 if __name__ == '__main__':
-    root = "/media/handewei/新材料/DF"
+    root = "E:\DataFountain\TSR"
     ctx = [mx.gpu(int(i)) for i in gpus.split(',') if i.strip()]
     ctx = ctx if ctx else [mx.cpu()]
 
