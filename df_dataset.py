@@ -33,7 +33,6 @@ class DF_Detection(VisionDataset):
 
     def __getitem__(self, idx):
         img_name = self._items[idx][0]
-
         label = [[int(self._items[idx][1]),  # xmin
                  int(self._items[idx][2]),  # ymin
                  int(self._items[idx][5]),  # xmax
@@ -56,22 +55,6 @@ class DF_Detection(VisionDataset):
             items.append(line)
         return items
 
-    # def split(self, train_ratio, validate_ratio, test_ratio, shuffle=False):
-    #     num_pre = len(self._items) / (train_ratio + validate_ratio + test_ratio)
-    #     import math
-    #     train_num = math.floor(num_pre * train_ratio)
-    #     validate_num = math.floor(num_pre * validate_ratio)
-    #     if shuffle:
-    #         import random
-    #         random.seed(233)
-    #         random.shuffle(self._items)
-    #     train_items = self._items[:train_num]
-    #     validate_items = self._items[train_num:train_num + validate_num]
-    #     test_items = self._items[train_num + validate_num:]
-    #     return DF_Detection(self._root, self._transform, train_items), \
-    #            DF_Detection(self._root, self._transform, validate_items), \
-    #            DF_Detection(self._root, self._transform, test_items)
-
 
 if __name__ == "__main__":
     root = "/media/handewei/新材料/DF"
@@ -79,8 +62,6 @@ if __name__ == "__main__":
     train_dataset = DF_Detection(root, label_name='train_label.csv')
     val_dataset = DF_Detection(root, label_name='val_label.csv')
     print(len(train_dataset), len(val_dataset))
-    # train_data, val_data, _ = dataset.split(1, 0, 0)
-    # print(len(train_data), len(val_data))
 
     for train_image, train_label in train_dataset:
         bbox = train_label[:, :4]

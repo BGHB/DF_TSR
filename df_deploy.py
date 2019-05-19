@@ -20,7 +20,7 @@ width, height = 512, 512  # suppose we use 512 as base training size
 batch_size = 2
 num_workers = 4
 
-class TrainTransform(object):
+class newSSDDefaultTrainTransform(object):
     def __init__(self, width, height, anchors=None, mean=(0.485, 0.456, 0.406),
                  std=(0.229, 0.224, 0.225), iou_thresh=0.5, box_norm=(0.1, 0.1, 0.2, 0.2),
                  **kwargs):
@@ -41,27 +41,28 @@ class TrainTransform(object):
         """Apply transform to training image/label."""
         # random color jittering
         # img = experimental.image.random_color_distort(src)
+        img, bbox = src, label
 
         # resize with random interpolation
-        h, w, _ = src.shape
-        img = mx.image.imresize(src, self._width, self._height)
-        y_scale = self._height / h
-        x_scale = self._width / w
-        label[:, 1] = y_scale * label[:, 1]
-        label[:, 3] = y_scale * label[:, 3]
-        label[:, 0] = x_scale * label[:, 0]
-        label[:, 2] = x_scale * label[:, 2]
+        h, w, _ = img.shape
+        img = mx.image.imresize(img, self._width, self._height)
+        x_scale = self._height / h
+        y_scale = self._width / w
+        bbox[:, 1] = y_scale * label[:, 1]
+        bbox[:, 3] = y_scale * label[:, 3]
+        bbox[:, 0] = x_scale * label[:, 0]
+        bbox[:, 2] = x_scale * label[:, 2]
 
         # to tensor
         img = mx.nd.image.to_tensor(img)
         img = mx.nd.image.normalize(img, mean=self._mean, std=self._std)
 
         if self._anchors is None:
-            return img, label.astype(img.dtype)
+            return img, bbox.astype(img.dtype)
 
         # generate training target so cpu workers can help reduce the workload on gpu
-        gt_bboxes = mx.nd.array(label[np.newaxis, :, :4])
-        gt_ids = mx.nd.array(label[np.newaxis, :, 4:5])
+        gt_bboxes = mx.nd.array(bbox[np.newaxis, :, :4])
+        gt_ids = mx.nd.array(bbox[np.newaxis, :, 4:5])
         cls_targets, box_targets, _ = self._target_generator(
             self._anchors, None, gt_bboxes, gt_ids)
         return img, cls_targets[0], box_targets[0]
@@ -71,8 +72,9 @@ def get_dataloader(net, train_dataset, val_dataset, width, height, num_workers):
     with autograd.train_mode():
         _, _, anchors = net(mx.nd.zeros((1, 3, height, width)))
     # behavior of batchify_fn: stack images, and pad labels
+
     batchify_fn_t = Tuple(Stack(), Stack(), Stack())
-    train_loader = DataLoader(train_dataset.transform(TrainTransform(width, height, anchors)),
+    train_loader = DataLoader(train_dataset.transform(newSSDDefaultTrainTransform(width, height, anchors)),
                               batch_size, shuffle=False, batchify_fn=batchify_fn_t, last_batch='rollover', num_workers=num_workers)
     batchify_fn = Tuple(Stack(), Pad(pad_val=-1))
     val_loader = DataLoader(val_dataset.transform(SSDDefaultValTransform(width, height)),
@@ -80,9 +82,67 @@ def get_dataloader(net, train_dataset, val_dataset, width, height, num_workers):
     return train_loader, val_loader
 
 
+mbox_loss = SSDMultiBoxLoss()
+if __name__ == '__main__':
+    root = "E:\DataFountain\TSR"
+    ctx = [mx.gpu(int(i)) for i in gpus.split(',') if i.strip()]
+    ctx = ctx if ctx else [mx.cpu()]
 
+    train_dataset = DF_Detection(root, label_name='train_label.csv')
+    val_dataset = DF_Detection(root, label_name='val_label.csv')
+    print('Training images:', len(train_dataset))
+    print('Validation images:', len(val_dataset))
+
+    net = model_zoo.get_model('ssd_512_resnet50_v1_custom', classes=train_dataset.classes)
+    net.initialize(force_reinit=True)
+
+    # train_loader, val_loader = get_dataloader(net, train_dataset, val_dataset, width, height, num_workers)
+
+    with autograd.train_mode():
+        _, _, anchors = net(mx.nd.zeros((1, 3, height, width)))
+    # behavior of batchify_fn: stack images, and pad labels
+    batchify_fn_t = Tuple(Stack(), Stack(), Stack())
+    train_loader = DataLoader(train_dataset.transform(newSSDDefaultTrainTransform(width, height, anchors)),
+                              batch_size, shuffle=False, batchify_fn=batchify_fn_t, last_batch='rollover', num_workers=num_workers)
+    # batchify_fn = Tuple(Stack(), Pad(pad_val=-1))
+    # val_loader = DataLoader(val_dataset.transform(SSDDefaultValTransform(width, height)),
+    #                         batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='keep', num_workers=num_workers)
+
+    # train
+    # trainer = gluon.Trainer(net.collect_params(), 'sgd',
+    #     {'learning_rate': 0.001, 'wd': 0.0005, 'momentum': 0.9})
+
+    for ib, batch in enumerate(train_loader):
+        if ib > 0:
+            break
+        print('data:', batch[0].shape)
+        print('class targets:', batch[1].shape)
+        print('box targets:', batch[2].shape)
+        img = batch[0][0]
+        print(type(img))
+        img = img.transpose(1, 2, 0)
+        print(img)
+        cv2.imshow("img", img.asnumpy())
+        cv2.waitKey(0)
+        cls = batch[0][0]
+        bbox = batch[0][0]
+        print('class targets:', cls.shape)
+        print('box targets:', bbox.shape)
+
+
+
+        # print("complete")
+        # with autograd.record():
+        #     cls_pred, box_pred, anchors = net(batch[0])
+        #     sum_loss, cls_loss, box_loss = mbox_loss(
+        #         cls_pred, box_pred, batch[1], batch[2])
+            # some standard gluon training steps:
+            # autograd.backward(sum_loss)
+            # trainer.step(1)
+
+#
 # if __name__ == '__main__':
-#     root = "/media/handewei/新材料/DF"
+#     root = "E:\DataFountain\TSR"
 #     ctx = [mx.gpu(int(i)) for i in gpus.split(',') if i.strip()]
 #     ctx = ctx if ctx else [mx.cpu()]
 #
@@ -94,119 +154,40 @@ def get_dataloader(net, train_dataset, val_dataset, width, height, num_workers):
 #     net = model_zoo.get_model('ssd_512_resnet50_v1_custom', classes=train_dataset.classes)
 #     net.initialize(force_reinit=True)
 #
-#     train_loader, val_loader = get_dataloader(net, train_dataset, val_dataset, width, height, num_workers)
-#
-#     # train
-#     trainer = gluon.Trainer(net.collect_params(), 'sgd',
-#         {'learning_rate': 0.001, 'wd': 0.0005, 'momentum': 0.9})
-#     mbox_loss = SSDMultiBoxLoss()
-#     for ib, batch in enumerate(train_loader):
-#         if ib > 0:
-#             break
-#         print('data:', batch[0].shape)
-#         print('class targets:', batch[1].shape)
-#         print('box targets:', batch[2].shape)
-#         print("complete")
-#         with autograd.record():
-#             cls_pred, box_pred, anchors = net(batch[0])
-#             sum_loss, cls_loss, box_loss = mbox_loss(
-#                 cls_pred, box_pred, batch[1], batch[2])
-#             # some standard gluon training steps:
-#             # autograd.backward(sum_loss)
-#             # trainer.step(1)
+#     # train_loader, val_loader = get_dataloader(net, train_dataset, val_dataset, width, height, num_workers)
 #
 #
-
-
-if __name__ == '__main__':
-    root = "E:\DataFountain\TSR"
-    ctx = [mx.gpu(int(i)) for i in gpus.split(',') if i.strip()]
-    ctx = ctx if ctx else [mx.cpu()]
-
-    train_dataset = DF_Detection(root, label_name='sub_train_label.csv')
-    val_dataset = DF_Detection(root, label_name='sub_val_label.csv')
-    print('Training images:', len(train_dataset))
-    print('Validation images:', len(val_dataset))
-
-    net = model_zoo.get_model('ssd_512_resnet50_v1_custom', classes=train_dataset.classes)
-    net.initialize(force_reinit=True)
-
-    # train_loader, val_loader = get_dataloader(net, train_dataset, val_dataset, width, height, num_workers)
-
-    with autograd.train_mode():
-        _, _, anchors = net(mx.nd.zeros((1, 3, height, width)))
-    train_transformed = TrainTransform(width, height, anchors)
-    # behavior of batchify_fn: stack images, and pad labels
-    batchify_fn = Tuple(Stack(), Stack(), Stack())
-    train_loader = DataLoader(train_dataset.transform(train_transformed),
-                              batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='rollover', num_workers=num_workers)
-    # batchify_fn = Tuple(Stack(), Stack())
-    # val_loader = DataLoader(val_dataset.transform(SSDDefaultValTransform(width, height)),
-    #                         batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='keep', num_workers=num_workers)
-    from matplotlib import pyplot as plt
-    from gluoncv.utils import viz
-    for i, batch in enumerate(train_loader):
-        if i > 0:
-            break
-        print('data:', batch[0].shape)
-        print('class targets:', batch[1].shape)
-        print('box targets:', batch[2].shape)
-        data = batch[0][0]
-        img = data.transpose(
-            (1, 2, 0)) * nd.array((0.229, 0.224, 0.225)) + nd.array((0.485, 0.456, 0.406))
-        # train_image2 = (train_image2 * 255).clip(0, 255)
-        train_image2 = (train_image2 * 255).clip(0, 255)
-        ax = viz.plot_bbox(train_image2.asnumpy(), batch[1][:, :4],
-                           labels=batch[2][:, ],
-                           class_names=train_dataset.classes)
-        plt.show()
-        # img = data.transpose(1, 2, 0)
-        # img = img.asnumpy()
-        # cv2.imshow("win", img)
-        # cv2.waitKey(0)
-        # train_image, train_label = train_dataset[0]
-        #
-        # train_image2, cids, train_label2 = train_transformed(train_image, train_label)
-        #
-        # train_image2 = train_image2.transpose((1, 2, 0)) * nd.array((0.229, 0.224, 0.225)) + nd.array((0.485, 0.456, 0.406))
-        # # train_image2 = (train_image2 * 255).clip(0, 255)
-        # cvimg = train_image2.asnumpy()
-        #
-        # # cvimg = cv2.rectangle(cvimg, (train_label2[0][0], train_label2[0][1]), (train_label2[0][2], train_label2[0][3]), (0, 255, 0), 1)
-        # cvimg = cv2.putText(cvimg, 's', (train_label2[0][2].asscalar(), train_label2[0][3].asscalar()), cv2.FONT_HERSHEY_COMPLEX, 4, (255, 0, 0), 4)
-        # cv2.imshow("dsfa", cvimg)
-        # cv2.waitKey(0)
-
-
-
-
-    # batchify_fn = Tuple(Stack(), Stack(), Stack())
-    # train_loader = DataLoader(train_dataset.transform(SSDDefaultTrainTransform(width, height, anchors)),
-    #                           batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='rollover', num_workers=num_workers)
-    #
-    # val_loader = DataLoader(val_dataset.transform(SSDDefaultValTransform(width, height)),
-    #                         batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='keep', num_workers=num_workers)
-
-
-
-
-    # # train
-    # trainer = gluon.Trainer(net.collect_params(), 'sgd',
-    #     {'learning_rate': 0.001, 'wd': 0.0005, 'momentum': 0.9})
-    #
-    # for ib, batch in enumerate(train_loader):
-    #     if ib > 0:
-    #         break
-    #     print('data:', batch[0].shape)
-    #     print('class targets:', batch[1].shape)
-    #     print('box targets:', batch[2].shape)
-    #     with autograd.record():
-    #         cls_pred, box_pred, anchors = net(batch[0])
-    #         sum_loss, cls_loss, box_loss = mbox_loss(
-    #             cls_pred, box_pred, batch[1], batch[2])
-    #         # some standard gluon training steps:
-    #         # autograd.backward(sum_loss)
-    #         # trainer.step(1)
+#     with autograd.train_mode():
+#         _, _, anchors = net(mx.nd.zeros((1, 3, height, width)))
+#
+#     # behavior of batchify_fn: stack images, and pad labels
+#     train_transformed = SSDDefaultTrainTransform(width, height, anchors)
+#
+#     train_image, train_label = train_dataset[0]
+#
+#
+#     train_image2, cids, train_label2 = train_transformed(train_image, train_label)
+#
+#
+#     train_image2 = train_image2.transpose((1, 2, 0)) * nd.array((0.229, 0.224, 0.225)) + nd.array((0.485, 0.456, 0.406))
+#     # train_image2 = (train_image2 * 255).clip(0, 255)
+#     cvimg = train_image2.asnumpy()
+#
+#
+#     # cvimg = cv2.rectangle(cvimg, (train_label2[0][0], train_label2[0][1]), (train_label2[0][2], train_label2[0][3]), (0, 255, 0), 1)
+#     cvimg = cv2.putText(cvimg, 's', (train_label2[0][2].asscalar(), train_label2[0][3].asscalar()), cv2.FONT_HERSHEY_COMPLEX, 4, (255, 0, 0), 4)
+#     cv2.imshow("dsfa", cvimg)
+#     cv2.waitKey(0)
+#
+#
+#
+#
+#     batchify_fn = Tuple(Stack(), Stack(), Stack())
+#     train_loader = DataLoader(train_dataset.transform(SSDDefaultTrainTransform(width, height, anchors)),
+#                               batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='rollover', num_workers=num_workers)
+#
+#     val_loader = DataLoader(val_dataset.transform(SSDDefaultValTransform(width, height)),
+#                             batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='keep', num_workers=num_workers)
 
 
 

@@ -10,12 +10,14 @@ from mxnet import nd
 from mxnet import gluon
 from mxnet import autograd
 import gluoncv as gcv
+
 from df_dataset import DF_Detection
+from new import TrainTransform
+
 from gluoncv import utils as gutils
 from gluoncv.model_zoo import get_model
 from gluoncv.data.batchify import Tuple, Stack, Pad
 from gluoncv.data.transforms.presets.ssd import SSDDefaultTrainTransform
-from new import SSDDefaultTrainTransform as newSSDDefaultTrainTransform
 from gluoncv.data.transforms.presets.ssd import SSDDefaultValTransform
 from gluoncv.utils.metrics.voc_detection import VOC07MApMetric, VOCMApMetric
 from gluoncv.utils.metrics.accuracy import Accuracy
@@ -27,13 +29,13 @@ def parse_args():
                         help="Base network name which serves as feature extraction base.")
     parser.add_argument('--data-shape', type=int, default=512,
                         help="Input data shape, use 300, 512.")
-    parser.add_argument('--batch-size', type=int, default=2,
+    parser.add_argument('--batch-size', type=int, default=1,
                         help='Training mini-batch size')
     parser.add_argument('--dataset', type=str, default='DF',
                         help='Training dataset.')
     parser.add_argument('--dataset-root', type=str, default="E:\DataFountain\TSR",
                         help='dataset root path')
-    parser.add_argument('--num-workers', '-j', dest='num_workers', type=int, default=2,
+    parser.add_argument('--num-workers', '-j', dest='num_workers', type=int, default=1,
                         help='Number of data workers, \
                         you can use larger number to accelerate data loading, if you CPU and GPUs are powerful.')
     parser.add_argument('--gpus', type=str, default='0',
@@ -70,41 +72,11 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def transform(img, label):
-    if np.random.uniform(0, 1) > 0.5:
-        img = cv2.split(img.asnumpy())
-        for i, c in enumerate(img):
-            img[i] = cv2.equalizeHist(c)
-        img = cv2.merge(img)
-        img = mx.nd.array(img)
-    return img, label
-
 def get_dataset(root):
-    train_dataset = DF_Detection(root, label_name='train_label.csv')
-    val_dataset = DF_Detection(root, label_name='val_label.csv')
+    train_dataset = DF_Detection(root, label_name='sub_train_label.csv')
+    val_dataset = DF_Detection(root, label_name='sub_val_label.csv')
     val_metric = VOC07MApMetric(iou_thresh=0.5, class_names=train_dataset.classes)
     return train_dataset, val_dataset, val_metric
-
-
-# def get_dataloader(net, train_dataset, val_dataset, data_shape, batch_size, num_workers):
-#     """Get dataloader."""
-#     width, height = data_shape, data_shape
-#     # use fake data to generate fixed anchors for target generation
-#     with autograd.train_mode():
-#         _, _, anchors = net(mx.nd.zeros((1, 3, height, width)))
-#     # batchify_fn = Tuple(Stack(), Stack(), Stack())  # stack image, cls_targets, box_targets
-#     # trans_train = train_dataset.transform(SSDDefaultTrainTransform(width, height, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)))
-#     # train_loader = gluon.data.DataLoader(
-#     #     train_dataset.transform(SSDDefaultTrainTransform(width, height, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))),
-#     #     batch_size, False, batchify_fn=batchify_fn, last_batch='rollover', num_workers=num_workers)
-#
-#     train_loader = gluon.data.DataLoader(train_dataset, batch_size, last_batch='rollover', num_workers=num_workers)
-#
-#     val_batchify_fn = Tuple(Stack(), Pad(pad_val=-1))
-#     val_loader = gluon.data.DataLoader(
-#         val_dataset.transform(SSDDefaultValTransform(width, height, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))),
-#         batch_size, False, batchify_fn=val_batchify_fn, last_batch='discard', num_workers=num_workers)
-#     return train_loader, val_loader
 
 
 def get_dataloader(net, train_dataset, val_dataset, data_shape, batch_size, num_workers):
@@ -114,7 +86,7 @@ def get_dataloader(net, train_dataset, val_dataset, data_shape, batch_size, num_
     with autograd.train_mode():
         _, _, anchors = net(mx.nd.zeros((1, 3, 512, 512)))
     batchify_fn_train = Tuple(Stack(), Stack(), Stack())
-    train_loader = gluon.data.DataLoader(train_dataset.transform(newSSDDefaultTrainTransform(width, height, anchors)),
+    train_loader = gluon.data.DataLoader(train_dataset.transform(TrainTransform(width, height, anchors)),
                                          batch_size, shuffle=False, batchify_fn=batchify_fn_train, last_batch='rollover',
                                          num_workers=num_workers)
 
@@ -123,7 +95,6 @@ def get_dataloader(net, train_dataset, val_dataset, data_shape, batch_size, num_
                                        batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='keep',
                                        num_workers=num_workers)
     return train_loader, val_loader
-
 
 
 def save_params(net, best_map, current_map, epoch, save_interval, prefix):
@@ -151,15 +122,21 @@ def validate(net, val_data, ctx, eval_metric):
         det_scores = []
         gt_bboxes = []
         gt_ids = []
-        gt_difficults = []
+
+
         for x, y in zip(data, label):
             # get prediction results
             ids, scores, bboxes = net(x)
-            temp_img = x[0].transpose(1, 2, 0).asnumpy()
-            temp_label = y[0]
-            temp_img = cv2.rectangle(temp_img, (temp_label[0][0], temp_label[0][1]), (temp_label[0][2], temp_label[0][3]), (0, 255, 0), 1)
-            cv2.imshow("temp_img", temp_img)
+
+            img = batch[0][0].transpose((1, 2, 0)) * nd.array((0.229, 0.224, 0.225)) + nd.array((0.485, 0.456, 0.406))
+            show_img = img.asnumpy()
+            for i in range(100):
+                cpubboxs = bboxes[0]
+                cpubbox = cpubboxs[i].asnumpy()
+                show_img = cv2.rectangle(show_img, (cpubbox[1], cpubbox[0]), (cpubbox[3], cpubbox[2]), (0, 255, 255), 1)
+            cv2.imshow("img", show_img)
             cv2.waitKey(0)
+
             det_ids.append(ids)
             det_scores.append(scores)
             # clip to image size
