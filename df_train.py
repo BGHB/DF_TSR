@@ -29,13 +29,13 @@ def parse_args():
                         help="Base network name which serves as feature extraction base.")
     parser.add_argument('--data-shape', type=int, default=512,
                         help="Input data shape, use 300, 512.")
-    parser.add_argument('--batch-size', type=int, default=1,
+    parser.add_argument('--batch-size', type=int, default=4,
                         help='Training mini-batch size')
     parser.add_argument('--dataset', type=str, default='DF',
                         help='Training dataset.')
-    parser.add_argument('--dataset-root', type=str, default="E:\DataFountain\TSR",
+    parser.add_argument('--dataset-root', type=str, default="F:\DF",
                         help='dataset root path')
-    parser.add_argument('--num-workers', '-j', dest='num_workers', type=int, default=1,
+    parser.add_argument('--num-workers', '-j', dest='num_workers', type=int, default=2,
                         help='Number of data workers, \
                         you can use larger number to accelerate data loading, if you CPU and GPUs are powerful.')
     parser.add_argument('--gpus', type=str, default='0',
@@ -64,7 +64,7 @@ def parse_args():
                         help='Saving parameter prefix')
     parser.add_argument('--save-interval', type=int, default=200,
                         help='Saving parameters epoch interval, best model will always be saved.')
-    parser.add_argument('--val-interval', type=int, default=40,
+    parser.add_argument('--val-interval', type=int, default=200,
                         help='Epoch interval for validation, increase the number will reduce the '
                              'training time if validation is slow.')
     parser.add_argument('--seed', type=int, default=233,
@@ -73,8 +73,8 @@ def parse_args():
     return args
 
 def get_dataset(root):
-    train_dataset = DF_Detection(root, label_name='sub_train_label.csv')
-    val_dataset = DF_Detection(root, label_name='sub_val_label.csv')
+    train_dataset = DF_Detection(root, label_name='rect_train.csv')
+    val_dataset = DF_Detection(root, label_name='rect_val.csv')
     val_metric = VOC07MApMetric(iou_thresh=0.5, class_names=train_dataset.classes)
     return train_dataset, val_dataset, val_metric
 

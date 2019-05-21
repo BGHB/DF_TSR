@@ -14,7 +14,7 @@ class DF_Detection(VisionDataset):
         self._im_shapes = {}
         self._root = os.path.expanduser(root)
         self._csv_path = os.path.join(self._root, label_name)
-        self._image_root = os.path.join(self._root, 'Train')
+        self._image_root = os.path.join(self._root, 'rect')
         self._transform = transform
         self.index_map = dict(zip(self.classes, range(self.num_class)))
         self._items = item or self._load_items()
@@ -57,10 +57,10 @@ class DF_Detection(VisionDataset):
 
 
 if __name__ == "__main__":
-    root = "/media/handewei/新材料/DF"
+    root = "F:/DF"
 
-    train_dataset = DF_Detection(root, label_name='train_label.csv')
-    val_dataset = DF_Detection(root, label_name='val_label.csv')
+    train_dataset = DF_Detection(root, label_name='rect_train.csv')
+    val_dataset = DF_Detection(root, label_name='rect_val.csv')
     print(len(train_dataset), len(val_dataset))
 
     for train_image, train_label in train_dataset:
@@ -71,7 +71,7 @@ if __name__ == "__main__":
         cvimg = cv2.rectangle(cvimg, (bbox[0][0], bbox[0][1]), (bbox[0][2], bbox[0][3]), (0, 255, 0), 8)
         cvimg = cv2.putText(cvimg, str(cid[0][0]), (bbox[0][2], bbox[0][3]), cv2.FONT_HERSHEY_COMPLEX, 4, (255, 0, 0), 8)
         # ROI = cvimg[bbox[1]:bbox[3], bbox[0]: bbox[2], :]
-        cvimg = cv2.resize(cvimg, (cvimg.shape[1]//4, cvimg.shape[0]//4))
+        cvimg = cv2.resize(cvimg, (512, 512))
 
         cv2.imshow("dsfa", cvimg)
         cv2.waitKey(1)
