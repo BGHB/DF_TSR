@@ -126,16 +126,6 @@ def validate(net, val_data, ctx, eval_metric):
         for x, y in zip(data, label):
             # get prediction results
             ids, scores, bboxes = net(x)
-
-            # img = batch[0][0].transpose((1, 2, 0)) * nd.array((0.229, 0.224, 0.225)) + nd.array((0.485, 0.456, 0.406))
-            # show_img = img.asnumpy()
-            # for i in range(100):
-            #     cpubboxs = bboxes[0]
-            #     cpubbox = cpubboxs[i].asnumpy()
-            #     show_img = cv2.rectangle(show_img, (cpubbox[1], cpubbox[0]), (cpubbox[3], cpubbox[2]), (0, 255, 255), 1)
-            # cv2.imshow("img", show_img)
-            # cv2.waitKey(0)
-
             det_ids.append(ids)
             det_scores.append(scores)
             # clip to image size
@@ -258,8 +248,8 @@ if __name__ == '__main__':
         net.load_parameters(args.resume.strip())
 
     for param in net.collect_params().values():
-        # if param._data is not None:
-        #     continue
+        if param._data is not None:
+            continue
         # print(param)
         param.initialize(force_reinit=True)
 
