@@ -6,8 +6,8 @@ import mxnet as mx
 from gluoncv.data.base import VisionDataset
 
 class DF_Detection(VisionDataset):
-    CLASSES = ('1', '2', '3', '4', '5', '6', '7', '8', '9', '10',
-               '11', '12', '13', '14', '15', '16', '17', '18', '19', '20')
+    CLASSES = ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10',
+               '11', '12', '13', '14', '15', '16', '17', '18', '19')
 
     def __init__(self, root, label_name, transform=None, item=None):
         super(DF_Detection, self).__init__(root)

@@ -12,60 +12,13 @@ from gluoncv.data.batchify import Tuple, Stack, Pad
 from mxnet.gluon.data import DataLoader
 from gluoncv import model_zoo
 from gluoncv.loss import SSDMultiBoxLoss
-
+from df_train import TrainTransform
 
 gpus = "0"
 utils.random.seed(233)
 width, height = 512, 512  # suppose we use 512 as base training size
 batch_size = 2
 num_workers = 4
-
-class TrainTransform(object):
-    def __init__(self, width, height, anchors=None, mean=(0.485, 0.456, 0.406),
-                 std=(0.229, 0.224, 0.225), iou_thresh=0.5, box_norm=(0.1, 0.1, 0.2, 0.2),
-                 **kwargs):
-        self._width = width
-        self._height = height
-        self._anchors = anchors
-        self._mean = mean
-        self._std = std
-        if anchors is None:
-            return
-
-        # since we do not have predictions yet, so we ignore sampling here
-        from gluoncv.model_zoo.ssd.target import SSDTargetGenerator
-        self._target_generator = SSDTargetGenerator(
-            iou_thresh=iou_thresh, stds=box_norm, negative_mining_ratio=-1, **kwargs)
-
-    def __call__(self, src, label):
-        """Apply transform to training image/label."""
-        # random color jittering
-        # img = experimental.image.random_color_distort(src)
-
-        # resize with random interpolation
-        h, w, _ = src.shape
-        img = mx.image.imresize(src, self._width, self._height)
-        y_scale = self._height / h
-        x_scale = self._width / w
-        label[:, 1] = y_scale * label[:, 1]
-        label[:, 3] = y_scale * label[:, 3]
-        label[:, 0] = x_scale * label[:, 0]
-        label[:, 2] = x_scale * label[:, 2]
-
-        # to tensor
-        img = mx.nd.image.to_tensor(img)
-        img = mx.nd.image.normalize(img, mean=self._mean, std=self._std)
-
-        if self._anchors is None:
-            return img, label.astype(img.dtype)
-
-        # generate training target so cpu workers can help reduce the workload on gpu
-        gt_bboxes = mx.nd.array(label[np.newaxis, :, :4])
-        gt_ids = mx.nd.array(label[np.newaxis, :, 4:5])
-        cls_targets, box_targets, _ = self._target_generator(
-            self._anchors, None, gt_bboxes, gt_ids)
-        return img, cls_targets[0], box_targets[0]
-
 
 def get_dataloader(net, train_dataset, val_dataset, width, height, num_workers):
     with autograd.train_mode():
@@ -78,44 +31,6 @@ def get_dataloader(net, train_dataset, val_dataset, width, height, num_workers):
     val_loader = DataLoader(val_dataset.transform(SSDDefaultValTransform(width, height)),
                             batch_size, shuffle=False, batchify_fn=batchify_fn, last_batch='keep', num_workers=num_workers)
     return train_loader, val_loader
-
-
-
-# if __name__ == '__main__':
-#     root = "/media/handewei/新材料/DF"
-#     ctx = [mx.gpu(int(i)) for i in gpus.split(',') if i.strip()]
-#     ctx = ctx if ctx else [mx.cpu()]
-#
-#     train_dataset = DF_Detection(root, label_name='train_label.csv')
-#     val_dataset = DF_Detection(root, label_name='val_label.csv')
-#     print('Training images:', len(train_dataset))
-#     print('Validation images:', len(val_dataset))
-#
-#     net = model_zoo.get_model('ssd_512_resnet50_v1_custom', classes=train_dataset.classes)
-#     net.initialize(force_reinit=True)
-#
-#     train_loader, val_loader = get_dataloader(net, train_dataset, val_dataset, width, height, num_workers)
-#
-#     # train
-#     trainer = gluon.Trainer(net.collect_params(), 'sgd',
-#         {'learning_rate': 0.001, 'wd': 0.0005, 'momentum': 0.9})
-#     mbox_loss = SSDMultiBoxLoss()
-#     for ib, batch in enumerate(train_loader):
-#         if ib > 0:
-#             break
-#         print('data:', batch[0].shape)
-#         print('class targets:', batch[1].shape)
-#         print('box targets:', batch[2].shape)
-#         print("complete")
-#         with autograd.record():
-#             cls_pred, box_pred, anchors = net(batch[0])
-#             sum_loss, cls_loss, box_loss = mbox_loss(
-#                 cls_pred, box_pred, batch[1], batch[2])
-#             # some standard gluon training steps:
-#             # autograd.backward(sum_loss)
-#             # trainer.step(1)
-#
-#
 
 
 if __name__ == '__main__':

@@ -12,8 +12,6 @@ from mxnet import autograd
 import gluoncv as gcv
 
 from df_dataset import DF_Detection
-from new import TrainTransform
-
 from gluoncv import utils as gutils
 from gluoncv.model_zoo import get_model
 from gluoncv.data.batchify import Tuple, Stack, Pad
@@ -21,7 +19,7 @@ from gluoncv.data.transforms.presets.ssd import SSDDefaultTrainTransform
 from gluoncv.data.transforms.presets.ssd import SSDDefaultValTransform
 from gluoncv.utils.metrics.voc_detection import VOC07MApMetric, VOCMApMetric
 from gluoncv.utils.metrics.accuracy import Accuracy
-
+from gluoncv.data.transforms import experimental
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train SSD networks.')
@@ -42,13 +40,13 @@ def parse_args():
                         help='Training with GPUs, you can specify 1,3 for example.')
     parser.add_argument('--epochs', type=int, default=40,
                         help='Training epochs.')
-    parser.add_argument('--resume', type=str, default='',
+    parser.add_argument('--resume', type=str, default='./train_df_file_0/ssd_512_resnet50_v1_DF_3199_0.8157.params',
                         help='Resume from previously saved parameters if not None. '
                              'For example, you can resume from ./ssd_xxx_0123.params')
     parser.add_argument('--start-epoch', type=int, default=0,
                         help='Starting epoch for resuming, default is 0 for new training.'
                              'You can specify it to 100 for example to start from 100 epoch.')
-    parser.add_argument('--lr', type=float, default=0.001,
+    parser.add_argument('--lr', type=float, default=0.0001,
                         help='Learning rate, default is 0.001')
     parser.add_argument('--lr-decay', type=float, default=0.1,
                         help='decay rate of learning rate. default is 0.1.')
@@ -58,19 +56,67 @@ def parse_args():
                         help='SGD momentum, default is 0.9')
     parser.add_argument('--wd', type=float, default=0.0005,
                         help='Weight decay, default is 5e-4')
-    parser.add_argument('--log-interval', type=int, default=20,
+    parser.add_argument('--log-interval', type=int, default=40,
                         help='Logging mini-batch interval. Default is 100.')
-    parser.add_argument('--save-prefix', type=str, default='train_df_file/',
+    parser.add_argument('--save-prefix', type=str, default='train_df_file_0c/',
                         help='Saving parameter prefix')
-    parser.add_argument('--save-interval', type=int, default=200,
+    parser.add_argument('--save-interval', type=int, default=400,
                         help='Saving parameters epoch interval, best model will always be saved.')
-    parser.add_argument('--val-interval', type=int, default=200,
+    parser.add_argument('--val-interval', type=int, default=400,
                         help='Epoch interval for validation, increase the number will reduce the '
                              'training time if validation is slow.')
     parser.add_argument('--seed', type=int, default=233,
                         help='Random seed to be fixed.')
     args = parser.parse_args()
     return args
+
+
+class TrainTransform(object):
+    def __init__(self, width, height, anchors=None, mean=(0.485, 0.456, 0.406),std=(0.229, 0.224, 0.225),
+                 iou_thresh=0.5, box_norm=(0.1, 0.1, 0.2, 0.2), **kwargs):
+        self._width = width
+        self._height = height
+        self._anchors = anchors
+        self._mean = mean
+        self._std = std
+        if anchors is None:
+            return
+
+        # since we do not have predictions yet, so we ignore sampling here
+        from gluoncv.model_zoo.ssd.target import SSDTargetGenerator
+        self._target_generator = SSDTargetGenerator(
+            iou_thresh=iou_thresh, stds=box_norm, negative_mining_ratio=-1, **kwargs)
+
+    def __call__(self, src, label):
+        """Apply transform to training image/label."""
+        # random color jittering
+        img = experimental.image.random_color_distort(src)
+
+        # resize with random interpolation
+        h, w, _ = src.shape
+        img = mx.image.imresize(img, self._width, self._height)
+
+        y_scale = self._height / h
+        x_scale = self._width / w
+        label[:, 1] = y_scale * label[:, 1]
+        label[:, 3] = y_scale * label[:, 3]
+        label[:, 0] = x_scale * label[:, 0]
+        label[:, 2] = x_scale * label[:, 2]
+
+        # to tensor
+        img = mx.nd.image.to_tensor(img)
+        img = mx.nd.image.normalize(img, mean=self._mean, std=self._std)
+
+        if self._anchors is None:
+            return img, label.astype(img.dtype)
+
+        # generate training target so cpu workers can help reduce the workload on gpu
+        gt_bboxes = mx.nd.array(label[np.newaxis, :, :4])
+        gt_ids = mx.nd.array(label[np.newaxis, :, 4:5])
+        cls_targets, box_targets, _ = self._target_generator(
+            self._anchors, None, gt_bboxes, gt_ids)
+        return img, cls_targets[0], box_targets[0]
+
 
 def get_dataset(root):
     train_dataset = DF_Detection(root, label_name='rect_train.csv')
@@ -87,7 +133,7 @@ def get_dataloader(net, train_dataset, val_dataset, data_shape, batch_size, num_
         _, _, anchors = net(mx.nd.zeros((1, 3, 512, 512)))
     batchify_fn_train = Tuple(Stack(), Stack(), Stack())
     train_loader = gluon.data.DataLoader(train_dataset.transform(TrainTransform(width, height, anchors)),
-                                         batch_size, shuffle=False, batchify_fn=batchify_fn_train, last_batch='rollover',
+                                         batch_size, shuffle=True, batchify_fn=batchify_fn_train, last_batch='rollover',
                                          num_workers=num_workers)
 
     batchify_fn = Tuple(Stack(), Stack())
@@ -250,8 +296,8 @@ if __name__ == '__main__':
     for param in net.collect_params().values():
         if param._data is not None:
             continue
-        # print(param)
-        param.initialize(force_reinit=True)
+        print(param)
+        param.initialize()
 
     train_data, val_data = get_dataloader(net, train_dataset, val_dataset, args.data_shape, args.batch_size, args.num_workers)
 
