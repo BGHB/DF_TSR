@@ -40,7 +40,7 @@ def parse_args():
                         help='Training with GPUs, you can specify 1,3 for example.')
     parser.add_argument('--epochs', type=int, default=40,
                         help='Training epochs.')
-    parser.add_argument('--resume', type=str, default='./train_df_file_0/ssd_512_resnet50_v1_DF_3199_0.8157.params',
+    parser.add_argument('--resume', type=str, default='./train_df_file_0cc/ssd_512_resnet50_v1_DF_best.params',
                         help='Resume from previously saved parameters if not None. '
                              'For example, you can resume from ./ssd_xxx_0123.params')
     parser.add_argument('--start-epoch', type=int, default=0,
@@ -58,7 +58,7 @@ def parse_args():
                         help='Weight decay, default is 5e-4')
     parser.add_argument('--log-interval', type=int, default=40,
                         help='Logging mini-batch interval. Default is 100.')
-    parser.add_argument('--save-prefix', type=str, default='train_df_file_0c/',
+    parser.add_argument('--save-prefix', type=str, default='train_df_file_0cc/',
                         help='Saving parameter prefix')
     parser.add_argument('--save-interval', type=int, default=400,
                         help='Saving parameters epoch interval, best model will always be saved.')
@@ -72,7 +72,7 @@ def parse_args():
 
 
 class TrainTransform(object):
-    def __init__(self, width, height, anchors=None, mean=(0.485, 0.456, 0.406),std=(0.229, 0.224, 0.225),
+    def __init__(self, width, height, anchors=None, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225),
                  iou_thresh=0.5, box_norm=(0.1, 0.1, 0.2, 0.2), **kwargs):
         self._width = width
         self._height = height
@@ -92,10 +92,15 @@ class TrainTransform(object):
         # random color jittering
         img = experimental.image.random_color_distort(src)
 
-        # resize with random interpolation
-        h, w, _ = src.shape
-        img = mx.image.imresize(img, self._width, self._height)
+        # random cropping
+        h, w, _ = img.shape
+        label, crop = experimental.bbox.random_crop_with_constraints(label, (w, h))
+        x0, y0, w, h = crop
+        img = mx.image.fixed_crop(img, x0, y0, w, h)
 
+        # resize with random interpolation
+        h, w, _ = img.shape
+        img = mx.image.imresize(img, self._width, self._height)
         y_scale = self._height / h
         x_scale = self._width / w
         label[:, 1] = y_scale * label[:, 1]
